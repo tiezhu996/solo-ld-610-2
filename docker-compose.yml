@@ -26,6 +26,8 @@ services:
       - .env
     environment:
       PORT: 3000
+      DB_PATH: /data/relic-restore.db
+      SEED_ON_BOOT: "true"
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-app_db}
@@ -34,6 +36,8 @@ services:
       JWT_SECRET: local-dev-secret
     ports:
       - "${BACKEND_PORT:-21110}:3000"
+    volumes:
+      - backend_data:/data
     depends_on:
       db:
         condition: service_healthy
@@ -56,3 +60,4 @@ services:
         condition: service_healthy
 volumes:
   db_data:
+  backend_data:

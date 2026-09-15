@@ -1,1 +1,10 @@
-export interface RelicItem { id: number; relic_code: string; name: string; era: string; material: string; collection_level: string; storage_location: string; current_condition: string }
+export interface RelicItem {
+  id: number;
+  relic_code: string;
+  name: string;
+  era: string | null;
+  material: string | null;
+  collection_level: string | null;
+  storage_location: string | null;
+  current_condition: string;
+}

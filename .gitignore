@@ -3,6 +3,8 @@ dist/
 build/
 .env
 .DS_Store
+._*
+**/._*
 *.log
 .idea/
 .vscode/
@@ -11,3 +13,10 @@ __pycache__/
 .pytest_cache/
 target/
 vendor/
+
+# SQLite 持久化文件与 WAL（闭环本地数据，不入库）
+*.db
+*.db-wal
+*.db-shm
+backend/data/
+
