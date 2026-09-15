@@ -1,0 +1,1 @@
+import { imageVersionRepository } from "../repositories/ImageVersionRepository"; export const imageVersionService = { list: () => imageVersionRepository.findAll(), create: (row: unknown) => imageVersionRepository.save(row) };

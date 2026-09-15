@@ -1,0 +1,58 @@
+name: relic-restore
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-relic-restore}-db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-app_db}
+      POSTGRES_USER: ${DB_USER:-app_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-app_password}
+    ports:
+      - "${DB_PORT:-54320}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-relic-restore}-backend
+    env_file:
+      - .env
+    environment:
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-app_db}
+      DB_USER: ${DB_USER:-app_user}
+      DB_PASSWORD: ${DB_PASSWORD:-app_password}
+      JWT_SECRET: local-dev-secret
+    ports:
+      - "${BACKEND_PORT:-21110}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-relic-restore}-frontend
+    env_file:
+      - .env
+    ports:
+      - "${FRONTEND_PORT:-20110}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+volumes:
+  db_data:

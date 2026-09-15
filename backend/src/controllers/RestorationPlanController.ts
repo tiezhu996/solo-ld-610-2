@@ -1,0 +1,1 @@
+import type { Request, Response } from "express"; import { restorationPlanService } from "../services/RestorationPlanService"; export const restorationPlanController = { list: (_req: Request, res: Response) => res.json(restorationPlanService.list()), create: (req: Request, res: Response) => res.status(201).json(restorationPlanService.create(req.body)) };

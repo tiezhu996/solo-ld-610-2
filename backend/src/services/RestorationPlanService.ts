@@ -1,0 +1,1 @@
+import { restorationPlanRepository } from "../repositories/RestorationPlanRepository"; export const restorationPlanService = { list: () => restorationPlanRepository.findAll(), create: (row: unknown) => restorationPlanRepository.save(row) };

@@ -1,0 +1,1 @@
+import type { Request, Response } from "express"; import { imageVersionService } from "../services/ImageVersionService"; export const imageVersionController = { list: (_req: Request, res: Response) => res.json(imageVersionService.list()), create: (req: Request, res: Response) => res.status(201).json(imageVersionService.create(req.body)) };

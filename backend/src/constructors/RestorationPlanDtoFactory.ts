@@ -1,0 +1,1 @@
+export const createRestorationPlanDto = (overrides = {}) => ({ id: 1, relic_id: 1, damage_record_id: 1, plan_title: "plan title 1", method: "method 1", risk_assessment: "risk assessment 1", approval_status: "SUBMITTED", owner_id: 1, ...overrides });

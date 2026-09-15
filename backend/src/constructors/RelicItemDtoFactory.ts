@@ -1,0 +1,1 @@
+export const createRelicItemDto = (overrides = {}) => ({ id: 1, relic_code: "relic code 1", name: "name 1", era: "era 1", material: "material 1", collection_level: "LOW", storage_location: "storage location 1", current_condition: "current condition 1", ...overrides });
