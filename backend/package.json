@@ -10,7 +10,8 @@
     "test:loop": "tsx ../scripts/verify-loop.ts",
     "test:snapshot": "tsx ../scripts/verify-read-snapshot.ts",
     "test:race": "tsx ../scripts/verify-read-race.ts",
-    "test:errors": "tsx ../scripts/verify-errors.ts"
+    "test:errors": "tsx ../scripts/verify-errors.ts",
+    "test:create-pollution": "tsx ../scripts/verify-create-pollution.ts"
   },
   "dependencies": {
     "express": "^4.19.2",

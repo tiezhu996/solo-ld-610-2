@@ -16,6 +16,8 @@ export const ERROR_MESSAGES: Record<string, string> = {
   [ERROR_CODES.PLAN_NOT_FOUND]: "修复方案不存在：planId={planId}",
   [ERROR_CODES.PLAN_STATUS_CONFLICT]: "方案当前状态 {status} 不允许执行 {action}",
   [ERROR_CODES.CONCURRENT_TRANSFER]: "并发转办冲突，病害已有在途方案：damageId={damageId}",
+  [ERROR_CODES.DAMAGE_INVALID_INITIAL_STATUS]:
+    "新建病害只能进入可转办初始状态 OPEN，禁止直接写入锁定/结案状态：status={status}（请通过转办闭环流转）",
 };
 
 export const renderMessage = (code: string, vars: Record<string, string | number> = {}): string => {

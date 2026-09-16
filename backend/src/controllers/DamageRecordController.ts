@@ -11,8 +11,9 @@ interface AuthedRequest extends Request {
 export const damageRecordController = {
   list: (_req: Request, res: Response) => res.json(damageRecordService.list()),
 
-  create: (req: Request, res: Response) =>
+  create: asyncHandler((req: Request, res: Response) =>
     res.status(201).json(damageRecordService.create(req.body)),
+  ),
 
   /**
    * 唯一提交入口：把某条病害转办为修复方案。

@@ -40,6 +40,8 @@ cp .env.example .env && docker compose up -d
 - 在途方案 `approval_status`：`SUBMITTED / APPROVED`（占用病害）
 - 终态方案：`REJECTED / ARCHIVED`（不占用病害；记录仍保留，可累积多条）
 
+> **新建病害只能落初始态 `OPEN`**：`POST /api/damage-record` 若携带 `IN_PLAN/REJECTED/CLOSED` 或任何非 `OPEN` 状态，返回 `400 DAMAGE_INVALID_INITIAL_STATUS` 且不产生任何记录。锁定/结案状态只能由转办闭环（转办/驳回/归档）流转得到——service 白名单校验 + repository 强制 `OPEN` 双重把关，杜绝新建绕过闭环造成状态污染。
+
 ### 一致性是怎么保证的
 
 1. **原子提交**：`方案写入 + 病害锁定 + 审计日志` 在同一个 `BEGIN IMMEDIATE` 事务里，一起提交或一起回滚。任一步失败（含故障注入）都不会留下「病害已 `IN_PLAN` 但没有方案」的半边状态。
@@ -64,9 +66,12 @@ npm run test:loop       # 31 项断言：幂等/驳回留痕/失败回滚/唯一
 npm run test:snapshot   # 确定性复现旧回读缺陷 + 快照免疫 + 读失败不留锁
 npm run test:race       # 1 写者 200 轮翻转 + 3 读者 6000 次回读，0 内部矛盾
 npm run test:errors     # 异常/约束回归：独立进程+独立连接指纹，21 阶段连跑两遍
+npm run test:create-pollution  # 新建状态污染回归：污染态零写入，13 阶段连跑两遍
 ```
 
 `test:errors` 覆盖：无效病害/方案编号、空标题、结案后再转办、非法状态跳转、重复审批、RBAC 越权、独立连接直插第二条在途方案。每个失败用例都断言错误码稳定、**病害与方案历史行级指纹前后逐字节不变**、记录“可回读后果”，并在失败后验证仍可正常转办；整套连续运行两遍结果完全一致。测试强制走真实文件持久化与独立连接，**不使用内存替身/mock/单连接串行化**。
+
+`test:create-pollution` 覆盖“新建病害只能落初始态 `OPEN`”这一约束：携带 `IN_PLAN/REJECTED/CLOSED` 及任意非 `OPEN`（含大小写/空白变体）的创建请求一律 `400 DAMAGE_INVALID_INITIAL_STATUS` 且**零写入**；重复提交（5 次）与 12 个独立进程并发污染同样零记录、不混入列表；已有种子病害与方案历史逐字节不变；正常的缺省/显式 `OPEN` 新建为 `201`，随后可完整走 转办→批准→归档。service 白名单校验 + repository 强制 `OPEN` 双重把关。
 
 HTTP 冒烟（先以临时库起服务）：
 
@@ -124,7 +129,7 @@ database/init.sql     # PostgreSQL 同构 schema（含同一部分唯一索引�
 
 ## 枚举/常量出现位置清单
 
-- **DamageStatus（新增）**：`constants/DamageStatus.ts`、`models/DamageRecord.ts`、`db/schema.ts` 与 `database/init.sql`（CHECK）、`db/seedData.ts`、`repositories/DamageRecordRepository.ts`、`services/TransferLoopService.ts`、回读响应 `types/TransferPayload.ts`。
+- **DamageStatus（新增）**：`constants/DamageStatus.ts`（枚举 + `INITIAL_DAMAGE_STATUS` + `isAllowedInitialStatus`）、`models/DamageRecord.ts`、`db/schema.ts` 与 `database/init.sql`（CHECK）、`db/seedData.ts`、`repositories/DamageRecordRepository.ts`（新建强制 OPEN + 闭环事务流转）、`services/DamageRecordService.ts`（初始态白名单）、`services/TransferLoopService.ts`、回读响应 `types/TransferPayload.ts`。
 - **PlanApprovalStatus**：`constants/PlanApprovalStatus.ts`（含 `ACTIVE_PLAN_STATUSES`）、`models/RestorationPlan.ts`、`constructors/RestorationPlanDtoFactory.ts`、`db/schema.ts` 与 `database/init.sql`（部分唯一索引/CHECK）、`services/TransferLoopService.ts`、错误消息与日志模板。
 - **RelicCondition**：`constants/RelicCondition.ts`、`models/RelicItem.ts`、`db/schema.ts`、种子与展示层引用。
 - **DamageSeverity**：`constants/DamageSeverity.ts`、`models/DamageRecord.ts`、`db/schema.ts`、登记构造器与筛选/展示。

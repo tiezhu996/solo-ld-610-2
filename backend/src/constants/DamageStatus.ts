@@ -12,6 +12,17 @@
 export const DamageStatus = ["OPEN", "IN_PLAN", "REJECTED", "CLOSED"] as const;
 export type DamageStatus = (typeof DamageStatus)[number];
 
+/**
+ * 新建病害唯一合法初始状态。
+ * IN_PLAN/REJECTED/CLOSED 都只能由转办闭环（转办/驳回/归档）流转产生，
+ * 绝不允许在"新建"请求中直接写入，否则会绕过闭环、污染状态。
+ */
+export const INITIAL_DAMAGE_STATUS: DamageStatus = "OPEN";
+
+/** 仅当 status 缺省或显式为 OPEN 时才允许作为新建入参。 */
+export const isAllowedInitialStatus = (s: unknown): boolean =>
+  s === undefined || s === null || s === "" || s === INITIAL_DAMAGE_STATUS;
+
 export const DAMAGE_STATUS_LABEL: Record<DamageStatus, string> = {
   OPEN: "待转办",
   IN_PLAN: "修复方案在途",

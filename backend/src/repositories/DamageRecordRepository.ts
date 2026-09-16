@@ -1,6 +1,7 @@
 import type { Database } from "better-sqlite3";
 import { getDb } from "../db/sqlite";
 import type { DamageRecord } from "../models/DamageRecord";
+import { INITIAL_DAMAGE_STATUS } from "../constants/DamageStatus";
 
 const COLUMNS =
   "id, relic_id, damage_type, position_desc, severity, discovered_by, discovered_at, image_url, status";
@@ -56,6 +57,11 @@ export const damageRecordRepository = {
     return res.changes === 1;
   },
 
+  /**
+   * 登记新病害。注意：这里忽略入参 status，强制落初始态 OPEN——
+   * IN_PLAN/REJECTED/CLOSED 只能由本文件中的闭环事务方法（lockForPlanTx /
+   * unlockAfterRejectTx / closeTx）改写。纵深防御，避免任何调用方绕过闭环。
+   */
   save(row: Record<string, unknown>): DamageRecord {
     const now = String(row.discovered_at ?? new Date().toISOString());
     const res = getDb()
@@ -73,7 +79,7 @@ export const damageRecordRepository = {
         discovered_by: row.discovered_by == null ? null : String(row.discovered_by),
         discovered_at: now,
         image_url: row.image_url == null ? null : String(row.image_url),
-        status: String(row.status ?? "OPEN"),
+        status: INITIAL_DAMAGE_STATUS,
       });
     return this.findById(Number(res.lastInsertRowid))!;
   },
