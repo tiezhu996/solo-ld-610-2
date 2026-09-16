@@ -1,4 +1,4 @@
-import { immediate } from "../db/sqlite";
+import { immediate, snapshotRead } from "../db/sqlite";
 import { damageRecordRepository } from "../repositories/DamageRecordRepository";
 import { restorationPlanRepository } from "../repositories/RestorationPlanRepository";
 import { auditLogRepository } from "../repositories/AuditLogRepository";
@@ -167,14 +167,17 @@ export const transferLoopService = {
   /** 唯一的状态回读入口：病害 + 在途方案 + 全部历史（含已驳回记录）。 */
   getTransferStatus(damageIdRaw: unknown): TransferStatus {
     const damageId = toPositiveInt(damageIdRaw, "damageId");
-    const damage = damageRecordRepository.findById(damageId);
-    if (!damage) {
-      throw notFound(ERROR_CODES.DAMAGE_NOT_FOUND, { damageId });
-    }
-    const history = immediate((tx) =>
-      restorationPlanRepository.findHistoryByDamageTx(tx, damageId),
-    );
-    return buildStatus(damage, history);
+    // 病害行与方案历史必须来自同一次一致性快照：
+    // 二者在同一个只读快照事务内读取，避免驳回/归档/再次转办在两次读之间提交，
+    // 拼出"病害仍 IN_PLAN 却无在途方案"或"已 REJECTED 却读到旧锁定"的跨时间点结果。
+    return snapshotRead((tx) => {
+      const damage = damageRecordRepository.findByIdTx(tx, damageId);
+      if (!damage) {
+        throw notFound(ERROR_CODES.DAMAGE_NOT_FOUND, { damageId });
+      }
+      const history = restorationPlanRepository.findHistoryByDamageTx(tx, damageId);
+      return buildStatus(damage, history);
+    });
   },
 
   /**

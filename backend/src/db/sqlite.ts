@@ -66,3 +66,31 @@ export const immediate = <T>(fn: (tx: DB) => T): T => {
     throw err;
   }
 };
+
+/**
+ * 在单个只读快照事务中执行多次读。
+ *
+ * 用 BEGIN（deferred）而非 BEGIN IMMEDIATE：事务在第一条 SELECT 时才开始，
+ * 并在 WAL 下钉住那一刻的一致性快照——事务内对"病害 + 在途方案 + 方案历史"
+ * 的所有读取都来自同一次快照，驳回/归档/再次转办在读取期间提交也不会让回读
+ * 拼出跨时间点的状态（如"病害仍锁定却无在途方案"）。
+ *
+ * deferred 读事务不持有写锁，不会阻塞写者；任一步读取抛错都会 ROLLBACK，
+ * 不残留事务/锁。
+ */
+export const snapshotRead = <T>(fn: (tx: DB) => T): T => {
+  const conn = getDb();
+  conn.exec("BEGIN");
+  try {
+    const result = fn(conn);
+    conn.exec("COMMIT");
+    return result;
+  } catch (err) {
+    try {
+      conn.exec("ROLLBACK");
+    } catch {
+      /* rollback best-effort */
+    }
+    throw err;
+  }
+};

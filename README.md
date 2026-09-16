@@ -48,7 +48,8 @@ cp .env.example .env && docker compose up -d
    `uq_active_plan_per_damage ON (damage_record_id) WHERE approval_status IN ('SUBMITTED','APPROVED')`，
    即使绕过应用层也无法为同一病害插入第二条在途方案；`REJECTED/ARCHIVED` 不受限，历史可保留。
 4. **并发安全**：立即事务串行化写操作 + 条件更新 `... WHERE status IN ('OPEN','REJECTED')` + 唯一索引三重保障；多进程同时转办同一病害，恰有 1 个创建，其余回读到同一条。
-5. **重启一致**：WAL 模式 + 落盘提交，数据持久化到命名卷；重启后回读到同一在途方案，驳回历史仍在。
+5. **回读快照一致**：唯一回读入口在**单个只读快照事务**（`BEGIN` deferred，WAL 下首条 SELECT 钉住快照）内同时读取病害、在途方案与历史。即便驳回/归档/再次转办恰在回读期间提交，三者也来自同一次快照，不会拼出「病害仍 `IN_PLAN` 却无在途方案」或「已 `REJECTED` 却读到旧锁定」；读事务不持写锁、不阻塞写，读中抛错即 `ROLLBACK`，不残留事务/锁。
+6. **重启一致**：WAL 模式 + 落盘提交，数据持久化到命名卷；重启后回读到同一在途方案，驳回历史仍在。
 
 ### 持久化说明
 
@@ -59,7 +60,9 @@ cp .env.example .env && docker compose up -d
 
 ```bash
 cd backend && npm install
-npm run test:loop     # 31 项断言：幂等/驳回留痕/失败回滚/唯一索引/8 进程并发/重启一致
+npm run test:loop       # 31 项断言：幂等/驳回留痕/失败回滚/唯一索引/8 进程并发/重启一致
+npm run test:snapshot   # 确定性复现旧回读缺陷 + 快照免疫 + 读失败不留锁
+npm run test:race       # 1 写者 200 轮翻转 + 3 读者 6000 次回读，0 内部矛盾
 ```
 
 HTTP 冒烟（先以临时库起服务）：
@@ -89,7 +92,7 @@ BASE=http://127.0.0.1:31110 node ../scripts/http-smoke.mjs
 ```text
 backend/src/
 ├── constants/        DamageStatus / PlanApprovalStatus / errorCodes / errorMessages / logTemplates
-├── db/               sqlite.ts(连接+立即事务) schema.ts(DDL+部分唯一索引) seedData.ts runSeed.ts
+├── db/               sqlite.ts(立即事务 immediate + 只读快照 snapshotRead) schema.ts(DDL+部分唯一索引) seedData.ts runSeed.ts
 ├── repositories/     DamageRecord / RestorationPlan / AuditLog …（含 *Tx 事务内方法）
 ├── services/         TransferLoopService.ts（闭环编排：转办/回读/批准/驳回/归档）
 ├── controllers/      DamageRecordController / RestorationPlanController
