@@ -4,6 +4,7 @@ import { restorationPlanRepository } from "../repositories/RestorationPlanReposi
 import { auditLogRepository } from "../repositories/AuditLogRepository";
 import { AppError, conflict, notFound, isUniqueViolation, ERROR_CODES } from "../utils/AppError";
 import { LOOP_LOG_TEMPLATES, formatLog } from "../constants/logTemplates";
+import { crashAt, type CrashPoint } from "../utils/crashInjection";
 import { toPlanResponse } from "../constructors/RestorationPlanDtoFactory";
 import type { DamageRecord } from "../models/DamageRecord";
 import type { RestorationPlan } from "../models/RestorationPlan";
@@ -37,6 +38,15 @@ const toPositiveInt = (v: unknown, field: string): number => {
   return n;
 };
 
+/**
+ * 构造提交点崩溃钩子（仅 CRASH_INJECTION_ENABLED=true 时生效）。
+ * op 仅用于日志标注，区分 transfer/reject/archive 的中断阶段。
+ */
+const crashHooks = (op: string, phase: CrashPoint | undefined) => ({
+  beforeCommit: () => crashAt(phase, "beforeCommit", `${op}.beforeCommit`),
+  afterCommit: () => crashAt(phase, "afterCommit", `${op}.afterCommit`),
+});
+
 const buildStatus = (damage: DamageRecord, history: RestorationPlan[]): TransferStatus => {
   const active = history.find((p) => p.approval_status === "SUBMITTED" || p.approval_status === "APPROVED") ?? null;
   return {
@@ -53,7 +63,7 @@ export const transferLoopService = {
    * 同一病害存在未归档（在途）方案时，重复提交只回读原方案，绝不生成第二条。
    * "方案写入 + 病害锁定"在同一个立即事务内，一起提交或一起回滚。
    */
-  transferToPlan(payload: TransferToPlanPayload, actor: Actor): TransferResult {
+  transferToPlan(payload: TransferToPlanPayload, actor: Actor, crashPhase?: CrashPoint): TransferResult {
     const damageId = toPositiveInt(payload.damageId, "damageId");
     const planTitle = typeof payload.plan_title === "string" ? payload.plan_title.trim() : "";
     if (!planTitle) {
@@ -144,13 +154,13 @@ export const transferLoopService = {
 
       const lockedDamage = damageRecordRepository.findByIdTx(tx, damageId)!;
       return { created: true, plan, damage: lockedDamage };
-    });
+    }, crashHooks("transfer", crashPhase));
   },
 
   /** 对外的并发冲突兜底：捕获 CONCURRENT_TRANSFER 后回读原方案。 */
-  transferToPlanIdempotent(payload: TransferToPlanPayload, actor: Actor): TransferResult {
+  transferToPlanIdempotent(payload: TransferToPlanPayload, actor: Actor, crashPhase?: CrashPoint): TransferResult {
     try {
-      return this.transferToPlan(payload, actor);
+      return this.transferToPlan(payload, actor, crashPhase);
     } catch (err) {
       if (err instanceof AppError && err.code === ERROR_CODES.CONCURRENT_TRANSFER) {
         const damageId = toPositiveInt(payload.damageId, "damageId");
@@ -184,7 +194,7 @@ export const transferLoopService = {
    * 驳回方案：在途(SUBMITTED/APPROVED) -> REJECTED，同时病害解锁(IN_PLAN -> REJECTED)。
    * 原驳回方案记录继续保留；病害恢复可再次转办。两步同一事务原子提交。
    */
-  rejectPlan(planIdRaw: unknown, payload: RejectPlanPayload, actor: Actor): TransferStatus {
+  rejectPlan(planIdRaw: unknown, payload: RejectPlanPayload, actor: Actor, crashPhase?: CrashPoint): TransferStatus {
     const planId = toPositiveInt(planIdRaw, "planId");
     const reason = payload.reason == null ? null : String(payload.reason);
     const now = new Date().toISOString();
@@ -237,11 +247,11 @@ export const transferLoopService = {
       const damage = damageRecordRepository.findByIdTx(tx, plan.damage_record_id)!;
       const history = restorationPlanRepository.findHistoryByDamageTx(tx, plan.damage_record_id);
       return buildStatus(damage, history);
-    });
+    }, crashHooks("reject", crashPhase));
   },
 
   /** 归档：已批准(APPROVED) -> ARCHIVED，病害结案(IN_PLAN -> CLOSED)。同一事务。 */
-  archivePlan(planIdRaw: unknown, actor: Actor): TransferStatus {
+  archivePlan(planIdRaw: unknown, actor: Actor, crashPhase?: CrashPoint): TransferStatus {
     const planId = toPositiveInt(planIdRaw, "planId");
     const now = new Date().toISOString();
 
@@ -275,7 +285,7 @@ export const transferLoopService = {
       const damage = damageRecordRepository.findByIdTx(tx, plan.damage_record_id)!;
       const history = restorationPlanRepository.findHistoryByDamageTx(tx, plan.damage_record_id);
       return buildStatus(damage, history);
-    });
+    }, crashHooks("archive", crashPhase));
   },
 
   /** 批准：SUBMITTED -> APPROVED（仍在途，病害保持锁定）。同一事务。 */

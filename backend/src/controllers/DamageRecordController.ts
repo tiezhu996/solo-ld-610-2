@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { damageRecordService } from "../services/DamageRecordService";
 import { transferLoopService } from "../services/TransferLoopService";
 import { asyncHandler } from "../utils/asyncHandler";
+import { parseCrashPhase } from "../utils/crashInjection";
 import type { TransferToPlanPayload } from "../types/TransferPayload";
 
 interface AuthedRequest extends Request {
@@ -31,7 +32,8 @@ export const damageRecordController = {
       owner_id: body.owner_id,
       idempotency_key: body.idempotency_key,
     };
-    const result = transferLoopService.transferToPlanIdempotent(payload, actor);
+    const crashPhase = parseCrashPhase(req.header("x-crash-phase"));
+    const result = transferLoopService.transferToPlanIdempotent(payload, actor, crashPhase);
     res.status(result.created ? 201 : 200).json({
       created: result.created,
       plan: result.plan,

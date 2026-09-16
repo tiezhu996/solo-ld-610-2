@@ -46,16 +46,28 @@ export const resetDb = (): void => {
   }
 };
 
+/** 事务提交点钩子（仅崩溃恢复测试注入使用）。 */
+export interface ImmediateHooks {
+  /** 所有写语句完成、COMMIT 执行前。 */
+  beforeCommit?: () => void;
+  /** COMMIT 已成功返回、控制权交回调用方前。 */
+  afterCommit?: () => void;
+}
+
 /**
  * 在单个立即事务中执行。BEGIN IMMEDIATE 一开始就拿写锁：
  * "方案写入 + 病害锁定"在同一事务内，一起提交或一起回滚，绝不留半边状态。
+ *
+ * hooks.beforeCommit / afterCommit 仅供崩溃恢复测试在提交点前后硬杀进程。
  */
-export const immediate = <T>(fn: (tx: DB) => T): T => {
+export const immediate = <T>(fn: (tx: DB) => T, hooks: ImmediateHooks = {}): T => {
   const conn = getDb();
   conn.exec("BEGIN IMMEDIATE");
   try {
     const result = fn(conn);
+    hooks.beforeCommit?.();
     conn.exec("COMMIT");
+    hooks.afterCommit?.();
     return result;
   } catch (err) {
     try {

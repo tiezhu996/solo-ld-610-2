@@ -67,11 +67,15 @@ npm run test:snapshot   # 确定性复现旧回读缺陷 + 快照免疫 + 读失
 npm run test:race       # 1 写者 200 轮翻转 + 3 读者 6000 次回读，0 内部矛盾
 npm run test:errors     # 异常/约束回归：独立进程+独立连接指纹，21 阶段连跑两遍
 npm run test:create-pollution  # 新建状态污染回归：污染态零写入，13 阶段连跑两遍
+npm run test:crash-recovery     # 崩溃恢复：转办/驳回/归档提交点前后硬杀进程，6 场景连跑两遍
 ```
 
 `test:errors` 覆盖：无效病害/方案编号、空标题、结案后再转办、非法状态跳转、重复审批、RBAC 越权、独立连接直插第二条在途方案。每个失败用例都断言错误码稳定、**病害与方案历史行级指纹前后逐字节不变**、记录“可回读后果”，并在失败后验证仍可正常转办；整套连续运行两遍结果完全一致。测试强制走真实文件持久化与独立连接，**不使用内存替身/mock/单连接串行化**。
 
 `test:create-pollution` 覆盖“新建病害只能落初始态 `OPEN`”这一约束：携带 `IN_PLAN/REJECTED/CLOSED` 及任意非 `OPEN`（含大小写/空白变体）的创建请求一律 `400 DAMAGE_INVALID_INITIAL_STATUS` 且**零写入**；重复提交（5 次）与 12 个独立进程并发污染同样零记录、不混入列表；已有种子病害与方案历史逐字节不变；正常的缺省/显式 `OPEN` 新建为 `201`，随后可完整走 转办→批准→归档。service 白名单校验 + repository 强制 `OPEN` 双重把关。
+
+`test:crash-recovery` 覆盖崩溃恢复：在转办/驳回/归档的 `COMMIT` **前**与**后**对服务进程发起 `SIGKILL`（等同掉电），随后先用独立直连读“重启前已落盘状态”，再用全新进程重启同一文件库、经唯一回读入口读“重启后状态”，断言二者一致且只按最近一次**已提交**版本收口——提交前崩溃整体回滚（无半更新），提交后崩溃完整保留，在途方案始终至多 1 条（无重复在途）；每个中断都落到明确的失败阶段与可回读结果，并验证崩溃后仍可继续正常转办/收口。共 6 个场景连续运行两遍结构摘要一致，另含一个“注入门控关闭则崩溃头被忽略”的对照。崩溃注入由环境变量 `CRASH_INJECTION_ENABLED=true` + 请求头 `x-crash-phase: beforeCommit|afterCommit` 双重门控，**默认关闭、对生产无影响**。
+
 
 HTTP 冒烟（先以临时库起服务）：
 
@@ -117,6 +121,7 @@ database/init.sql     # PostgreSQL 同构 schema（含同一部分唯一索引�
 - `DB_USER/DB_PASSWORD/DB_NAME`：Postgres 凭据
 - `DB_PATH`：后端 SQLite 文件路径，容器内 `/data/relic-restore.db`；宿主机直跑默认 `backend/data/relic-restore.db`
 - `SEED_ON_BOOT`：启动时库为空是否灌种子，默认 `true`
+- `CRASH_INJECTION_ENABLED`：崩溃恢复测试专用开关（默认关闭）。仅为 `true` 时，写请求携带 `x-crash-phase: beforeCommit|afterCommit` 才会在提交点硬杀进程；生产不设置即完全无效。
 - `JWT_SECRET`：JWT 密钥
 
 ## Docker 部署说明
