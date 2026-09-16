@@ -9,7 +9,8 @@
     "seed": "tsx src/db/runSeed.ts",
     "test:loop": "tsx ../scripts/verify-loop.ts",
     "test:snapshot": "tsx ../scripts/verify-read-snapshot.ts",
-    "test:race": "tsx ../scripts/verify-read-race.ts"
+    "test:race": "tsx ../scripts/verify-read-race.ts",
+    "test:errors": "tsx ../scripts/verify-errors.ts"
   },
   "dependencies": {
     "express": "^4.19.2",
